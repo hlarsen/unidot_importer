@@ -892,7 +892,7 @@ class UnidotMaterial:
 		mat.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
 		var albedo_tex: Texture = get_texture(texProperties, "_MainTex")
 		if albedo_tex:
-			print("setting albedo_texture: " + str(albedo_tex))
+#			print("setting albedo_texture: " + str(albedo_tex))
 			mat.albedo_texture = albedo_tex
 
 		# unity handles metallic and specular differently than godot so we have to get fancy
@@ -910,7 +910,7 @@ class UnidotMaterial:
 				mat.metallic_specular = get_float(floatProperties, "_SpecColor", 0.0)
 				var specular_tex: Texture = get_texture(texProperties, "_SpecGlossMap")
 				if specular_tex:
-					print("setting (specular) metallic_texture and roughness_texture: " + str(specular_tex))
+#					print("setting (specular) metallic_texture and roughness_texture: " + str(specular_tex))
 					mat.metallic_texture = specular_tex
 					# TODO: unity can use specular or albedo alpha; can't find Source property
 					mat.roughness = 1.0 - get_float(floatProperties, "_GlossMapScale", 0.0)
@@ -920,7 +920,7 @@ class UnidotMaterial:
 				mat.metallic = get_float(floatProperties, "_Metallic", 0.0)
 				var metallic_tex: Texture = get_texture(texProperties, "_MetallicGlossMap")
 				if metallic_tex:
-					print("setting metallic_texture and roughness_texture: " + str(metallic_tex))
+#					print("setting metallic_texture and roughness_texture: " + str(metallic_tex))
 					mat.metallic_texture = metallic_tex
 					# TODO: unity can use specular or albedo alpha; can't find Source property
 					mat.roughness = 1.0 - get_float(floatProperties, "_GlossMapScale", 0.0)
@@ -949,7 +949,7 @@ class UnidotMaterial:
 		if kws.has("_NORMALMAP"):
 			var normal_map: Texture = get_texture(texProperties, "_BumpMap")
 			if normal_map:
-				print("setting normal_map: " + str(normal_map))
+#				print("setting normal_map: " + str(normal_map))
 				mat.normal_enabled = true
 				mat.normal_texture = normal_map
 				mat.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
@@ -971,7 +971,7 @@ class UnidotMaterial:
 		# TODO: should we gate via kws.has() or not? from the unity docs i'm not sure Occlusion has a keyword...
 		var occlusion: Texture = get_texture(texProperties, "_OcclusionMap")
 		if occlusion:
-			print("setting occlusion: " + str(occlusion))
+#			print("setting occlusion: " + str(occlusion))
 			mat.ao_texture = occlusion
 			mat.ao_enabled = true
 			mat.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0)
@@ -982,7 +982,7 @@ class UnidotMaterial:
 		if kws.has("_PARALLAXMAP"):
 			var height_map: Texture = get_texture(texProperties, "_ParallaxMap")
 			if height_map:
-				print("setting height_map: " + str(height_map))
+#				print("setting height_map: " + str(height_map))
 				mat.heightmap_texture = height_map
 				mat.heightmap_enabled = true
 				mat.heightmap_scale = get_float(floatProperties, "_Parallax", 1.0)
@@ -1004,7 +1004,7 @@ class UnidotMaterial:
 			pass
 
 		# uv1
-		print("defaulting uv1 and uv2 scale to 1.0 and offset to 0.0")
+#		print("defaulting uv1 and uv2 scale to 1.0 and offset to 0.0")
 		mat.uv1_scale = Vector3(1.0, 1.0, 1.0)
 		mat.uv1_offset = Vector3(0.0, 0.0, 0.0)
 		# TODO: research
