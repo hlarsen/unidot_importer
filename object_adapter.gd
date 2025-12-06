@@ -729,21 +729,21 @@ class UnidotMaterial:
 	extends UnidotObject
 
 	# Old:
-	#	m_Colors:
-	#	- _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
-	#	- _Color: {r: 1, g: 1, b: 1, a: 1}
+	#    m_Colors:
+	#    - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
+	#    - _Color: {r: 1, g: 1, b: 1, a: 1}
 	# [{_EmissionColor:Color.TRANSPARENT,_Color:Color.WHITE}]
 
 	# New:
-	#	m_Colors:
-	#	  data:
-	#		first:
-	#		  name: _EmissionColor
-	#		second: {r: 0, g: 0, b: 0, a: 0}
-	#	  data:
-	#		first:
-	#		  name: _Color
-	#		second: {r: 1, g: 1, b: 1, a: 1}
+	#    m_Colors:
+	#      data:
+	#        first:
+	#          name: _EmissionColor
+	#        second: {r: 0, g: 0, b: 0, a: 0}
+	#      data:
+	#        first:
+	#          name: _Color
+	#		 second: {r: 1, g: 1, b: 1, a: 1}
 	# ...
 	# [{first:{name:_EmissionColor},second:Color.TRANSPARENT},{first:{name:_Color},second:Color.WHITE}]
 
@@ -4863,12 +4863,12 @@ class UnidotPrefabInstance:
 		# I think we should separate out the **CREATION OF STRUCTURE** from the **SETTING OF STATE**
 		# If we do this, prefab modification properties would work the same way as normal properties:
 		# prefab:
-		#	instantiate scene
-		#	assign property modifications
+		#    instantiate scene
+		#    assign property modifications
 		# top-level (scene):
-		#	build structure with create_godot_nodes
-		#	now we have what is basically an instantiated scene.
-		#	assign property modifications
+		#    build structure with create_godot_nodes
+		#    now we have what is basically an instantiated scene.
+		#    assign property modifications
 
 		#calculate_prefab_nodepaths(state, instanced_scene, target_fileid, target_prefab_meta)
 		#for target_fileid in target_prefab_meta.fileid_to_nodepath:
@@ -6787,7 +6787,7 @@ class UnidotAssetImporter:
 			#   serializedVersion: 2
 			#   human:
 			#   - boneName: RightUpLeg
-			#	 humanName: RightUpperLeg
+			#     humanName: RightUpperLeg
 		return out_clips
 
 	var meshes_light_baking: int:
