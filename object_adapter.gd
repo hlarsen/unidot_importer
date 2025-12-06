@@ -403,18 +403,19 @@ class UnidotObject:
 
 		var new_surface_count: int = 0 if node.mesh == null else node.mesh.get_surface_count()
 		if new_surface_count != 0 and node.mesh != null:
+			# duplicate the mesh so we can use surface_set_material
+			node.mesh = node.mesh.duplicate()
 			if new_materials_size < new_surface_count:
 				for i in range(new_materials_size, new_surface_count):
-					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
+#					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
+					# NOTE: testing setting the mesh surface, not the override - duplication ok? doesn't work without it
+					node.mesh.surface_set_name(i, "Surface " + str(i))
+					node.mesh.surface_set_material(i, current_materials[i])
 			for i in range(new_materials_size):
-				node.set_surface_override_material(i, current_materials[i])
-
-		# surface_get_material
-		#for i in range(new_surface_count)
-		#	for i in range():
-		#		node.material_override
-		#else:
-		#	if new_materials_size < new_surface_count:
+#				node.set_surface_override_material(i, current_materials[i])
+				# NOTE: testing setting the mesh surface, not the override - duplication ok? doesn't work without it
+				node.mesh.surface_set_name(i, "Surface " + str(i))
+				node.mesh.surface_set_material(i, current_materials[i])
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		return convert_properties_component(node, uprops)
@@ -865,19 +866,21 @@ class UnidotMaterial:
 
 		# transparency (default is Unity rendering mode Opaque)
 		if kws.has("_ALPHATEST_ON"):
-			# Unity rendering mode transparent
+			# Unity rendering mode Cutout
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			var cutoff: float = get_float(floatProperties, "_Cutoff", 0.0)
 			if cutoff > 0.0:
 				mat.alpha_scissor_threshold = cutoff
 #				mat.alpha_antialiasing_mode = ""
 		if kws.has("_ALPHABLEND_ON"):
-			# Unity rendering mode Cutout
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		if kws.has("_ALPHAPREMULTIPLY_ON"):
 			# Unity rendering mode Fade
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		if kws.has("_ALPHAPREMULTIPLY_ON"):
+			# Unity rendering mode Transparent
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			mat.blend_mode = BaseMaterial3D.BLEND_MODE_PREMULT_ALPHA
+			# NOTE: transparent from both sides by default?
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 		# shading
 		# shading mode, diffuse mode, specular mode, disable ambient light, disable fog, disable specular occlusion
@@ -5656,11 +5659,15 @@ class UnidotMeshRenderer:
 		var mf: RefCounted = gameObject.get_meshFilter()
 		if mf != null:
 			state.add_fileID(new_node, mf)
-		var idx: int = 0
-		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
-		for m in keys.get("m_Materials", []):
-			new_node.set_surface_override_material(mat_slots[idx] if idx < len(mat_slots) else idx, meta.get_godot_resource(m))
-			idx += 1
+
+		# TODO: do we need to continue to do this if we're properly setting the materials on the meshes?
+		# does Unity even support material overrides? were we just fixing it here rather than on the mesh?
+#		var idx: int = 0
+#		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
+#		for m in keys.get("m_Materials", []):
+#			new_node.set_surface_override_material(mat_slots[idx] if idx < len(mat_slots) else idx, meta.get_godot_resource(m))
+#			idx += 1
+
 		return new_node
 
 	# TODO: convert_properties
