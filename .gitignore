@@ -3,3 +3,7 @@ FBX2glTF*
 unity_asset_database.*res
 static_cache.*res
 static_storage.*res
+*.uid
+
+# IDEs
+.idea/
