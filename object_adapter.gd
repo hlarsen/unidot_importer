@@ -5879,7 +5879,9 @@ class UnidotLight:
 			spot_light.set_param(Light3D.PARAM_SPOT_ANGLE, spotAngle * 0.5)
 			spot_light.set_param(Light3D.PARAM_SPOT_ATTENUATION, 0.5)  # Eyeball guess for their default spotlight texture
 			spot_light.set_param(Light3D.PARAM_ATTENUATION, 0.333)  # Was 1.0
-			spot_light.set_param(Light3D.PARAM_RANGE, lightRange)
+                        # TODO: review lightRange, etc - a user said they are way too long range, maybe m_Range is the max?
+#			spot_light.set_param(Light3D.PARAM_RANGE, lightRange)
+			spot_light.set_param(Light3D.PARAM_RANGE, 100)
 			light = spot_light
 		elif src_light_type == 1:
 			# depth_range? max_disatance? blend_splits? bias_split_scale?
