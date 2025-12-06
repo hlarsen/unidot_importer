@@ -794,7 +794,7 @@ class UnidotMaterial:
 	func get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
 		var env = texProperties.get(name, {})
 		var scale: Vector2 = env.get("m_Scale", Vector2(1, 1))
-		return Vector3(scale.x, scale.y, 0.0)
+		return Vector3(scale.x, scale.y, 1.0)
 
 	func get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
 		var env = texProperties.get(name, {})
@@ -834,6 +834,7 @@ class UnidotMaterial:
 
 	# TODO: review and implement (whatever we can) from the Godot 4 StandardMaterial3D setup
 	# we have the inspector option names commented out inline with the ones we're actively using
+	# https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/Inspector/StandardShaderGUI.cs
 	func create_godot_resource() -> Resource:  #Material:
 		print("\nCreating material: " + self.name)
 
@@ -862,18 +863,19 @@ class UnidotMaterial:
 		var mat = StandardMaterial3D.new()
 		mat.resource_name = self.name
 
-		# transparency (default is unity rendering mode Opaque)
+		# transparency (default is Unity rendering mode Opaque)
 		if kws.has("_ALPHATEST_ON"):
+			# Unity rendering mode transparent
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			var cutoff: float = get_float(floatProperties, "_Cutoff", 0.0)
 			if cutoff > 0.0:
 				mat.alpha_scissor_threshold = cutoff
 #				mat.alpha_antialiasing_mode = ""
 		if kws.has("_ALPHABLEND_ON"):
-			# unity rendering mode Cutout
+			# Unity rendering mode Cutout
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		if kws.has("_ALPHAPREMULTIPLY_ON"):
-			# unity rendering mode Fade
+			# Unity rendering mode Fade
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			mat.blend_mode = BaseMaterial3D.BLEND_MODE_PREMULT_ALPHA
 
@@ -895,8 +897,8 @@ class UnidotMaterial:
 #			print("setting albedo_texture: " + str(albedo_tex))
 			mat.albedo_texture = albedo_tex
 
-		# unity handles metallic and specular differently than godot so we have to get fancy
-		# set some defaults that apply to unity's specular/metallic/dielectric modes 
+		# Unity handles metallic and specular differently than Godot so we have to get fancy
+		# set some defaults that apply to Unity's specular/metallic/dielectric modes
 		mat.metallic = 0.0
 		mat.metallic_specular = 0.0
 		mat.roughness = 0.0
@@ -906,23 +908,23 @@ class UnidotMaterial:
 		# so when it deals with a texture i guess...
 		if kws.has("_METALLICGLOSSMAP"):
 			if texProperties.has("_SpecGlossMap") and floatProperties.get("_SpecColor"):
-				# specular mode - unity Standard (Specular setup)
+				# specular mode - Unity Standard (Specular setup)
 				mat.metallic_specular = get_float(floatProperties, "_SpecColor", 0.0)
 				var specular_tex: Texture = get_texture(texProperties, "_SpecGlossMap")
 				if specular_tex:
 #					print("setting (specular) metallic_texture and roughness_texture: " + str(specular_tex))
 					mat.metallic_texture = specular_tex
-					# TODO: unity can use specular or albedo alpha; can't find Source property
+					# TODO: Unity can use specular or albedo alpha; can't find Source property
 					mat.roughness = 1.0 - get_float(floatProperties, "_GlossMapScale", 0.0)
 					mat.roughness_texture = specular_tex
 			elif texProperties.has("_MetallicGlossMap") and floatProperties.has("_Metallic"):
-				# metallic mode - unity Standard
+				# metallic mode - Unity Standard
 				mat.metallic = get_float(floatProperties, "_Metallic", 0.0)
 				var metallic_tex: Texture = get_texture(texProperties, "_MetallicGlossMap")
 				if metallic_tex:
 #					print("setting metallic_texture and roughness_texture: " + str(metallic_tex))
 					mat.metallic_texture = metallic_tex
-					# TODO: unity can use specular or albedo alpha; can't find Source property
+					# TODO: Unity can use specular or albedo alpha; can't find Source property
 					mat.roughness = 1.0 - get_float(floatProperties, "_GlossMapScale", 0.0)
 					mat.roughness_texture = metallic_tex
 		else:
@@ -935,7 +937,7 @@ class UnidotMaterial:
 		# emission, energy multiplier, operator, on uv2, texture
 		if kws.has("_EMISSION"):
 			# NOTE: i don't think emission uses the alpha channel so this should be fine
-			# it appears unity uses it for emission intensity
+			# it appears Unity uses it for emission intensity
 			mat.emission = colorProperties.get("_EmissionColor", Color.BLACK).linear_to_srgb()
 			mat.emission_energy = mat.emission.a
 			mat.emission_enabled = true
@@ -968,7 +970,7 @@ class UnidotMaterial:
 
 		# ambient occlusion
 		# light affect, texture, on uv2, texture channel
-		# TODO: should we gate via kws.has() or not? from the unity docs i'm not sure Occlusion has a keyword...
+		# TODO: should we gate via kws.has() or not? from the Unity docs i'm not sure Occlusion has a keyword...
 		var occlusion: Texture = get_texture(texProperties, "_OcclusionMap")
 		if occlusion:
 #			print("setting occlusion: " + str(occlusion))
@@ -1004,22 +1006,15 @@ class UnidotMaterial:
 			pass
 
 		# uv1
-#		print("defaulting uv1 and uv2 scale to 1.0 and offset to 0.0")
-		mat.uv1_scale = Vector3(1.0, 1.0, 1.0)
-		mat.uv1_offset = Vector3(0.0, 0.0, 0.0)
-		# TODO: research
-		# NOTE: setting UVs based on main texture, which may not be there
-		# Maybe in older Godot versions this was per-texture but seems to be global now
-		# It's global in current Unity, so maybe we should look at the code that populates texProperties
-#		if mat.albedo_texture:
-#			mat.uv1_scale = get_texture_scale(texProperties, "_MainTex")
-#			mat.uv1_scale.z = 1.0
-#			mat.uv1_offset = get_texture_offset(texProperties, "_MainTex")
-#			mat.uv1_offset.z = 0.0
+		# NOTE: "In Unity the _MainText scale ... is actually used for all the texture slots other than detail. Godot
+		# locks the detail texture to the UV2 slot, while Unity can reuse the main UV slot with a different scale.
+		# There's no exact way to replicate the uv2 scale/offset in godot to do this."
+		if mat.albedo_texture:
+			mat.uv1_scale = get_texture_scale(texProperties, "_MainTex")
+			mat.uv1_offset = get_texture_offset(texProperties, "_MainTex")
 
 		# uv2
-		mat.uv2_scale = Vector3(1.0, 1.0, 1.0)
-		mat.uv2_offset = Vector3(0.0, 0.0, 0.0)
+		# scale, offset
 
 		# sampling
 		# filter, repeat
