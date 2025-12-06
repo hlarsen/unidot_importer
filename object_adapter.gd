@@ -403,24 +403,19 @@ class UnidotObject:
 
 		var new_surface_count: int = 0 if node.mesh == null else node.mesh.get_surface_count()
 		if new_surface_count != 0 and node.mesh != null:
+			# duplicate the mesh so we can use surface_set_material
+			node.mesh = node.mesh.duplicate()
 			if new_materials_size < new_surface_count:
 				for i in range(new_materials_size, new_surface_count):
 #					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
 					# NOTE: testing setting the mesh surface, not the override - duplication ok? doesn't work without it
-					node.mesh = node.mesh.duplicate()
+					node.mesh.surface_set_name(i, "Surface " + str(i))
 					node.mesh.surface_set_material(i, current_materials[i])
 			for i in range(new_materials_size):
 #				node.set_surface_override_material(i, current_materials[i])
 				# NOTE: testing setting the mesh surface, not the override - duplication ok? doesn't work without it
-				node.mesh = node.mesh.duplicate()
+				node.mesh.surface_set_name(i, "Surface " + str(i))
 				node.mesh.surface_set_material(i, current_materials[i])
-
-		# surface_get_material
-		#for i in range(new_surface_count)
-		#	for i in range():
-		#		node.material_override
-		#else:
-		#	if new_materials_size < new_surface_count:
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		return convert_properties_component(node, uprops)
