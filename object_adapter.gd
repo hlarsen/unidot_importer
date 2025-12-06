@@ -405,9 +405,15 @@ class UnidotObject:
 		if new_surface_count != 0 and node.mesh != null:
 			if new_materials_size < new_surface_count:
 				for i in range(new_materials_size, new_surface_count):
-					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
+#					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
+					# NOTE: testing setting the mesh surface, not the override - duplication ok? doesn't work without it
+					node.mesh = node.mesh.duplicate()
+					node.mesh.surface_set_material(i, current_materials[i])
 			for i in range(new_materials_size):
-				node.set_surface_override_material(i, current_materials[i])
+#				node.set_surface_override_material(i, current_materials[i])
+				# NOTE: testing setting the mesh surface, not the override - duplication ok? doesn't work without it
+				node.mesh = node.mesh.duplicate()
+				node.mesh.surface_set_material(i, current_materials[i])
 
 		# surface_get_material
 		#for i in range(new_surface_count)
