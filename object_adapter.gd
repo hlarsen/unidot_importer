@@ -866,19 +866,21 @@ class UnidotMaterial:
 
 		# transparency (default is Unity rendering mode Opaque)
 		if kws.has("_ALPHATEST_ON"):
-			# Unity rendering mode transparent
+			# Unity rendering mode Cutout
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			var cutoff: float = get_float(floatProperties, "_Cutoff", 0.0)
 			if cutoff > 0.0:
 				mat.alpha_scissor_threshold = cutoff
 #				mat.alpha_antialiasing_mode = ""
 		if kws.has("_ALPHABLEND_ON"):
-			# Unity rendering mode Cutout
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		if kws.has("_ALPHAPREMULTIPLY_ON"):
 			# Unity rendering mode Fade
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		if kws.has("_ALPHAPREMULTIPLY_ON"):
+			# Unity rendering mode Transparent
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			mat.blend_mode = BaseMaterial3D.BLEND_MODE_PREMULT_ALPHA
+			# NOTE: transparent from both sides by default?
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 		# shading
 		# shading mode, diffuse mode, specular mode, disable ambient light, disable fog, disable specular occlusion
@@ -5659,8 +5661,7 @@ class UnidotMeshRenderer:
 			state.add_fileID(new_node, mf)
 
 		# TODO: do we need to continue to do this if we're properly setting the materials on the meshes?
-		# does Unity even support material overrides?
-		# i'm guessing there may be situations where both are assigned?
+		# does Unity even support material overrides? were we just fixing it here rather than on the mesh?
 #		var idx: int = 0
 #		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
 #		for m in keys.get("m_Materials", []):
