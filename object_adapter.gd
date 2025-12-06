@@ -743,7 +743,7 @@ class UnidotMaterial:
 	#      data:
 	#        first:
 	#          name: _Color
-	#		 second: {r: 1, g: 1, b: 1, a: 1}
+	#        second: {r: 1, g: 1, b: 1, a: 1}
 	# ...
 	# [{first:{name:_EmissionColor},second:Color.TRANSPARENT},{first:{name:_Color},second:Color.WHITE}]
 
