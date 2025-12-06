@@ -112,6 +112,27 @@ class UnidotObject:
 	var _cache_uniq_key: String = ""
 	var adapter: RefCounted = null  # RefCounted to containing scope.
 
+	func pretty_print(obj, indent=0):
+		var prefix = " ".repeat(indent)
+		if typeof(obj) == TYPE_DICTIONARY:
+			print(prefix + "{")
+			for key in obj.keys():
+				var line = prefix + "  " + str(key) + ": "
+				var value = obj[key]
+				if typeof(value) in [TYPE_DICTIONARY, TYPE_ARRAY]:
+					print(line)
+					pretty_print(value, indent + 4)
+				else:
+					print(line + str(value))
+			print(prefix + "}")
+		elif typeof(obj) == TYPE_ARRAY:
+			print(prefix + "[")
+			for item in obj:
+				pretty_print(item, indent + 4)
+			print(prefix + "]")
+		else:
+			print(prefix + str(obj))
+
 	# Log messages related to this asset
 	func log_debug(msg: String):
 		meta.log_debug(self.fileID, msg)
@@ -773,7 +794,7 @@ class UnidotMaterial:
 	func get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
 		var env = texProperties.get(name, {})
 		var scale: Vector2 = env.get("m_Scale", Vector2(1, 1))
-		return Vector3(scale.x, scale.y, 0.0)
+		return Vector3(scale.x, scale.y, 1.0)
 
 	func get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
 		var env = texProperties.get(name, {})
@@ -811,137 +832,225 @@ class UnidotMaterial:
 	func get_godot_type() -> String:
 		return "StandardMaterial3D"
 
+	# TODO: review and implement (whatever we can) from the Godot 4 StandardMaterial3D setup
+	# we have the inspector option names commented out inline with the ones we're actively using
+	# https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/Inspector/StandardShaderGUI.cs
 	func create_godot_resource() -> Resource:  #Material:
-		#log_debug("keys: " + str(keys))
-		var kws = get_keywords()
-		var floatProperties = get_float_properties()
-		#log_debug(str(floatProperties))
-		var texProperties = get_tex_properties()
-		#log_debug(str(texProperties))
-		var colorProperties = get_color_properties()
-		#log_debug(str(colorProperties))
-		var ret = StandardMaterial3D.new()
-		ret.resource_name = self.name
-		# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unidot
-		# But it seems to workaround a problem with some materials for now.
-		ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
-		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
-		var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap"]
-		for name in texProperties:
-			if albedo_textures_to_try.has(name):
-				continue
-			if not name.ends_with("Map"):
-				albedo_textures_to_try.append(name)
-		# Pick a random non-null texture property as albedo. Prefer texture slots not ending with "Map"
-		for name in texProperties:
-			if name == "_BumpMap" or name == "_OcclusionMap" or name == "_MetallicGlossMap" or name == "_ParallaxMap":
-				continue
-			if name.ends_with("ColorMap") or name.ends_with("BaseMap"):
-				albedo_textures_to_try.append(name)
-		for name in albedo_textures_to_try:
-			var env = texProperties.get(name, {})
-			var texref: Array = env.get("m_Texture", [null, 0, "", 0])
-			if not texref.is_empty():
-				ret.albedo_texture = meta.get_godot_resource(texref)
-				if ret.albedo_texture != null:
-					log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
-					ret.uv1_scale = get_texture_scale(texProperties, name)
-					ret.uv1_offset = get_texture_offset(texProperties, name)
-					break
+		print("\nCreating material: " + self.name)
 
-		if ret.albedo_texture == null:
-			ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
-			ret.uv1_offset = get_texture_offset(texProperties, "_MainTex")
+		# NOTE: i *think* get_keywords() returns { "": true } if none are set, should confirm and fix if so
+		var kws: Dictionary = get_keywords()
+		var colorProperties: Dictionary = get_color_properties()
+		var floatProperties: Dictionary = get_float_properties()
+		var texProperties: Dictionary = get_tex_properties()
+#		log_debug(kws)
+#		log_debug(str(colorProperties))
+#		log_debug(str(floatProperties))
+#		log_debug(str(texProperties))
 
-		# TODO: ORM not yet implemented.
-		if true: # kws.get("_NORMALMAP", false):
-			ret.normal_texture = get_texture(texProperties, "_BumpMap")
-			ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
-			if ret.normal_texture != null:
-				ret.normal_enabled = true
-		if kws.get("_EMISSION", false):
-			var emis_vec: Plane = get_vector_from_color(colorProperties, "_EmissionColor", Color.BLACK)
-			var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
-			ret.emission = Color.BLACK
-			if emis_mag > 0.01:
-				ret.emission_enabled = true
-				ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag).linear_to_srgb()
-				ret.emission_energy = emis_mag
-				ret.emission_texture = get_texture(texProperties, "_EmissionMap")
-				if ret.emission_texture != null:
-					ret.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
-		if true: # kws.get("_PARALLAXMAP", false):
-			ret.heightmap_texture = get_texture(texProperties, "_ParallaxMap")
-			if ret.heightmap_texture != null:
-				ret.heightmap_enabled = true
-				# Godot generated standard shader code looks something like this:
-				# float depth = 1.0 - texture(texture_heightmap, base_uv).r;
-				# vec2 ofs = base_uv - view_dir.xy * depth * heightmap_scale * 0.01;
-				# ------
-				# Note in particular the * 0.01 multiplier.
-				# Unfortunately, Godot does not have a heightmap bias setting (such as 0.5)
-				# Therefore, it is not possible to represent a heightmap completely accurately
-				# And we must pick a direction: positive or negative. In this case I choose negative.
-				# Which causes the heightmap to "pop out" of the surface.
-				ret.heightmap_scale = -100.0 * get_float(floatProperties, "_Parallax", 1.0)
-		if kws.get("_SPECULARHIGHLIGHTS_OFF", false):
-			ret.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-		if kws.get("_GLOSSYREFLECTIONS_OFF", false):
-			pass
-		if kws.get("_DOUBLESIDED_ON", false): # HDRP-compatible materials should set this.
-			ret.cull_mode = BaseMaterial3D.CULL_DISABLED
-		var occlusion = get_texture(texProperties, "_OcclusionMap")
-		if occlusion != null:
-			ret.ao_enabled = true
-			ret.ao_texture = occlusion
-			ret.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0)  # why godot defaults to 0???
-			ret.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
-		var metallic_texture: Texture = null
-		var use_glossmap := false
-		if true: # kws.get("_METALLICGLOSSMAP"):
-			var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
-			if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
-				metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
-			if not metallic_gloss_texture_ref.is_empty() and metallic_gloss_texture_ref[1] != 0:
-				metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
-				if not is_equal_approx(get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
-					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref, false)
-					log_debug("Found metallic roughness texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
-					use_glossmap = true
-				if metallic_texture == null:
-					if use_glossmap:
-						log_debug("Load roughness " + str(load("res://Assets/ArchVizPRO Interior Vol.6/3D MATERIAL/Tiles_White/Tiles_White_metallic.roughness.png")))
-						log_warn("Unable to load metallic roughness texture. Trying metallic gloss.", "_MetallicGlossMap", metallic_gloss_texture_ref)
-					metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
-					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref)
-					log_debug("Found metallic gloss texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
-					use_glossmap = false
-			ret.metallic_texture = metallic_texture
-			ret.metallic = get_float(floatProperties, "_Metallic", 0.0)
-			ret.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-			if use_glossmap:
-				ret.roughness_texture = metallic_texture
-				ret.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_ALPHA
-				ret.roughness = 1.0 # We scaled down the roughness in code.
-		# TODO: Glossiness: invert color channels??
-		if metallic_texture == null:
-			# UnidotStandardInput.cginc ignores _Glossiness if _METALLICGLOSSMAP.
-			ret.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
-		if kws.get("_ALPHATEST_ON"):
-			ret.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+#		print("Global Keys:")
+#		pretty_print(keys)
+#		print("Shader Keys:")
+#		pretty_print(kws)
+#		print("Color Properties:")
+#		pretty_print(colorProperties)
+#		print("Float Properties:")
+#		pretty_print(floatProperties)
+#		print("Texture Properties:")
+#		pretty_print(texProperties)
+
+		# create the material
+		var mat = StandardMaterial3D.new()
+		mat.resource_name = self.name
+
+		# transparency (default is Unity rendering mode Opaque)
+		if kws.has("_ALPHATEST_ON"):
+			# Unity rendering mode transparent
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			var cutoff: float = get_float(floatProperties, "_Cutoff", 0.0)
 			if cutoff > 0.0:
-				ret.alpha_scissor_threshold = cutoff
-		elif kws.get("_ALPHABLEND_ON") or kws.get("_ALPHAPREMULTIPLY_ON"):
-			# FIXME: No premultiply
-			ret.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		# Godot's detail map is a bit lacking right now...
-		#if kws.get("_DETAIL_MULX2"):
-		#	ret.detail_enabled = true
-		#	ret.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
-		assign_object_meta(ret)
-		return ret
+				mat.alpha_scissor_threshold = cutoff
+#				mat.alpha_antialiasing_mode = ""
+		if kws.has("_ALPHABLEND_ON"):
+			# Unity rendering mode Cutout
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		if kws.has("_ALPHAPREMULTIPLY_ON"):
+			# Unity rendering mode Fade
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.blend_mode = BaseMaterial3D.BLEND_MODE_PREMULT_ALPHA
 
+		# shading
+		# shading mode, diffuse mode, specular mode, disable ambient light, disable fog, disable specular occlusion
+		if kws.has("_SPECULARHIGHLIGHTS_OFF"):
+			mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+		if kws.has("_DOUBLESIDED_ON"): # HDRP-compatible materials should set this.
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+		# vertex color
+		# use as albedo, is sRGB
+
+		# albedo
+		# color, texture, texure force sRGB, texture MSDF
+		mat.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
+		var albedo_tex: Texture = get_texture(texProperties, "_MainTex")
+		if albedo_tex:
+#			print("setting albedo_texture: " + str(albedo_tex))
+			mat.albedo_texture = albedo_tex
+
+		# Unity handles metallic and specular differently than Godot so we have to get fancy
+		# set some defaults that apply to Unity's specular/metallic/dielectric modes
+		mat.metallic = 0.0
+		mat.metallic_specular = 0.0
+		mat.roughness = 0.0
+		mat.roughness_texture_channel =  get_float(floatProperties, "_SmoothnessTextureChannel", 0.0)
+		# smoothness changes from a value to a scale when:
+		# we set a Metallic/Specular texture OR when Source is changes from Metallic Alpha to Albedo Alpha
+		# so when it deals with a texture i guess...
+		if kws.has("_METALLICGLOSSMAP"):
+			if texProperties.has("_SpecGlossMap") and floatProperties.get("_SpecColor"):
+				# specular mode - Unity Standard (Specular setup)
+				mat.metallic_specular = get_float(floatProperties, "_SpecColor", 0.0)
+				var specular_tex: Texture = get_texture(texProperties, "_SpecGlossMap")
+				if specular_tex:
+#					print("setting (specular) metallic_texture and roughness_texture: " + str(specular_tex))
+					mat.metallic_texture = specular_tex
+					# TODO: Unity can use specular or albedo alpha; can't find Source property
+					mat.roughness = 1.0 - get_float(floatProperties, "_GlossMapScale", 0.0)
+					mat.roughness_texture = specular_tex
+			elif texProperties.has("_MetallicGlossMap") and floatProperties.has("_Metallic"):
+				# metallic mode - Unity Standard
+				mat.metallic = get_float(floatProperties, "_Metallic", 0.0)
+				var metallic_tex: Texture = get_texture(texProperties, "_MetallicGlossMap")
+				if metallic_tex:
+#					print("setting metallic_texture and roughness_texture: " + str(metallic_tex))
+					mat.metallic_texture = metallic_tex
+					# TODO: Unity can use specular or albedo alpha; can't find Source property
+					mat.roughness = 1.0 - get_float(floatProperties, "_GlossMapScale", 0.0)
+					mat.roughness_texture = metallic_tex
+		else:
+			# dielectric mode - works with either Standard or Standard (Specular setup) i guess
+			mat.metallic = get_float(floatProperties, "_Metallic", 0.0)
+			mat.metallic_specular = get_float(floatProperties, "_SpecColor", 0.0)
+			mat.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
+
+		# emission
+		# emission, energy multiplier, operator, on uv2, texture
+		if kws.has("_EMISSION"):
+			# NOTE: i don't think emission uses the alpha channel so this should be fine
+			# it appears Unity uses it for emission intensity
+			mat.emission = colorProperties.get("_EmissionColor", Color.BLACK).linear_to_srgb()
+			mat.emission_energy = mat.emission.a
+			mat.emission_enabled = true
+			var emission_tex: Texture = get_texture(texProperties, "_EmissionMap")
+			if emission_tex:
+				mat.emission_texture = emission_tex
+				mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+
+		# normal map
+		# scale, texture
+		if kws.has("_NORMALMAP"):
+			var normal_map: Texture = get_texture(texProperties, "_BumpMap")
+			if normal_map:
+#				print("setting normal_map: " + str(normal_map))
+				mat.normal_enabled = true
+				mat.normal_texture = normal_map
+				mat.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
+
+		# bent normal map
+		# texture
+
+		# rim
+		# rim, tint, texture
+
+		# clearcoat
+		# clearcoat, roughness, texture
+
+		# anistropy
+		# anistropy, flowmap
+
+		# ambient occlusion
+		# light affect, texture, on uv2, texture channel
+		# TODO: should we gate via kws.has() or not? from the Unity docs i'm not sure Occlusion has a keyword...
+		var occlusion: Texture = get_texture(texProperties, "_OcclusionMap")
+		if occlusion:
+#			print("setting occlusion: " + str(occlusion))
+			mat.ao_texture = occlusion
+			mat.ao_enabled = true
+			mat.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0)
+			mat.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+
+		# height
+		# scale, deep parallax, flip tangent, flip binormal, texture, flip texture
+		if kws.has("_PARALLAXMAP"):
+			var height_map: Texture = get_texture(texProperties, "_ParallaxMap")
+			if height_map:
+#				print("setting height_map: " + str(height_map))
+				mat.heightmap_texture = height_map
+				mat.heightmap_enabled = true
+				mat.heightmap_scale = get_float(floatProperties, "_Parallax", 1.0)
+
+		# subsurf scatter
+		# strength, skin mode, texture; transmittance: color, texture, depth, boost
+
+		# back lighting
+		# blacklight, texture
+
+		# refraction
+		# scale, texture, texture channel
+
+		# detail
+		# mask, blend mode, uv layer, albedo tex, normal tex
+		if kws.has("_DetailNormalMap"):
+			pass
+		if kws.has("_DetailAlbedoMap"):
+			pass
+
+		# uv1
+		# NOTE: "In Unity the _MainText scale ... is actually used for all the texture slots other than detail. Godot
+		# locks the detail texture to the UV2 slot, while Unity can reuse the main UV slot with a different scale.
+		# There's no exact way to replicate the uv2 scale/offset in godot to do this."
+		if mat.albedo_texture:
+			mat.uv1_scale = get_texture_scale(texProperties, "_MainTex")
+			mat.uv1_offset = get_texture_offset(texProperties, "_MainTex")
+
+		# uv2
+		# scale, offset
+
+		# sampling
+		# filter, repeat
+
+		# shadows
+		# disable receive shadows, shadow to opacity
+
+		# billboard
+		# mode
+
+		# grow
+		# grow
+
+		# transform
+		# fixed size, use point size, use particle trails, use z clip scale, use fov override
+
+		# proximity fade
+		# enabled
+
+		# distance fade
+		# mode
+
+		# stencil
+		# mode
+
+		# render priority
+		# int?
+
+		# next pass
+		# tex
+
+		assign_object_meta(mat)
+
+		return mat
+
+	# this is called by asset_adapter
 	func bake_roughness_texture_if_needed(tmp_path: String, guid_to_pkgasset: Dictionary, stage2_dict_lock: Mutex, stage2_extra_asset_dict: Dictionary) -> String:
 		var kws = get_keywords()
 		var floatProperties = get_float_properties()
