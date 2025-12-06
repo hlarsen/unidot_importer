@@ -5657,11 +5657,16 @@ class UnidotMeshRenderer:
 		var mf: RefCounted = gameObject.get_meshFilter()
 		if mf != null:
 			state.add_fileID(new_node, mf)
-		var idx: int = 0
-		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
-		for m in keys.get("m_Materials", []):
-			new_node.set_surface_override_material(mat_slots[idx] if idx < len(mat_slots) else idx, meta.get_godot_resource(m))
-			idx += 1
+
+		# TODO: do we need to continue to do this if we're properly setting the materials on the meshes?
+		# does Unity even support material overrides?
+		# i'm guessing there may be situations where both are assigned?
+#		var idx: int = 0
+#		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
+#		for m in keys.get("m_Materials", []):
+#			new_node.set_surface_override_material(mat_slots[idx] if idx < len(mat_slots) else idx, meta.get_godot_resource(m))
+#			idx += 1
+
 		return new_node
 
 	# TODO: convert_properties
