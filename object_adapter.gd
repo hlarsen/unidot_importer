@@ -5203,7 +5203,6 @@ class UnidotCollider:
 				new_body = Area3D.new()
 			else:
 				new_body = StaticBody3D.new()
-			new_body.name = self.type
 			new_parent.add_child(new_body, true)
 			new_body.owner = state.owner
 			new_node.name = "CollisionShape3D"
