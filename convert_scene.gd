@@ -387,12 +387,80 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				probe.get_parent().remove_child(probe)
 				probe.queue_free()
 
+	# Rework the node hierarchy before saving
+	# NOTE: this is preference
+	cleanup_scene_hierarchy(scene_contents)
+
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
+	print("Finished packing " + str(pkgasset.pathname) + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	pkgasset.log_debug("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	recursive_print(pkgasset, scene_contents)
 	return packed_scene
 
+func cleanup_scene_hierarchy(node: Node3D) -> void:
+	print("Processing: ", node.name, " (", node.get_class(), ")")
+	var root_node: bool = false
+	if not node.get_parent():
+		root_node = true
+
+	if node.get_class() == "Node3D" and node.get_parent() and not node.get_children():
+		print("freeing node: " + node.name)
+		node.get_parent().remove_child(node)
+		return
+
+	# if a Node3D only has one child _and_ it's a StaticBody3D, move it up to the parent
+	if node.get_class() == "Node3D" and node.get_children().size() == 1:
+		var parent_transform: Transform3D = node.transform
+
+		var c: Node = node.get_child(0)
+		if c is StaticBody3D:
+			var original_name = node.name  # Save the parent's name
+			c.owner = null
+			c.get_parent().remove_child(c)
+			node.get_parent().add_child(c)
+			c.owner = node.get_parent()
+			c.transform = parent_transform
+			node.name = "%s_old" % node.name
+			c.name = original_name  # Rename StaticBody3D to match parent
+			node.get_parent().remove_child(node)
+			node.free()
+			return
+
+	for child in node.get_children():
+		if child.get_class() == "Node3D":
+			var static_body: StaticBody3D = null
+			var meshes: Array = []
+			var parent_transform: Transform3D = child.transform
+
+			for grandchild in child.get_children():
+				if grandchild is StaticBody3D:
+					if static_body:
+						assert(not static_body)
+
+					static_body = grandchild
+				elif grandchild is MeshInstance3D:
+					meshes.append(grandchild)
+
+			# move meshes up or down in the tree
+			for mesh in meshes:
+				mesh.owner = null
+				mesh.get_parent().remove_child(mesh)
+
+				if static_body:
+					static_body.add_child(mesh)
+					static_body.move_child(mesh, 0)
+					mesh.owner = node
+				else:
+					node.add_child(mesh)
+					node.move_child(mesh, 1)
+					mesh.owner = node
+					mesh.transform = parent_transform
+					var parent_name: String = child.name
+					child.name = "%s_old" % child.name
+					mesh.name = parent_name
+
+		cleanup_scene_hierarchy(child)
 
 func process_lod_groups(scene_contents: Node, ps: RefCounted):
 
