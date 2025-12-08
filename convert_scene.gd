@@ -393,7 +393,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
-	print("Finished packing " + str(pkgasset.pathname) + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	pkgasset.log_debug("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	recursive_print(pkgasset, scene_contents)
 	return packed_scene
