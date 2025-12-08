@@ -398,13 +398,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	return packed_scene
 
 func cleanup_scene_hierarchy(node: Node3D) -> void:
-	print("Processing: ", node.name, " (", node.get_class(), ")")
+#	print("Processing: ", node.name, " (", node.get_class(), ")")
 	var root_node: bool = false
 	if not node.get_parent():
 		root_node = true
 
 	if node.get_class() == "Node3D" and node.get_parent() and not node.get_children():
-		print("freeing node: " + node.name)
 		node.get_parent().remove_child(node)
 		return
 
@@ -414,14 +413,14 @@ func cleanup_scene_hierarchy(node: Node3D) -> void:
 
 		var c: Node = node.get_child(0)
 		if c is StaticBody3D:
-			var original_name = node.name  # Save the parent's name
+			var original_name: StringName = node.name
 			c.owner = null
 			c.get_parent().remove_child(c)
 			node.get_parent().add_child(c)
 			c.owner = node.get_parent()
 			c.transform = parent_transform
 			node.name = "%s_old" % node.name
-			c.name = original_name  # Rename StaticBody3D to match parent
+			c.name = original_name
 			node.get_parent().remove_child(node)
 			node.free()
 			return
