@@ -389,7 +389,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	# Rework the node hierarchy before saving
 	# NOTE: this is preference and targetting certain assets, should not be used for gthe general case
-#	scene_contents = cleanup_scene_hierarchy(scene_contents)
+	scene_contents = cleanup_scene_hierarchy(scene_contents)
 
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
