@@ -133,6 +133,14 @@ class UnidotObject:
 		else:
 			print(prefix + str(obj))
 
+	func print_node_hierarchy(node: Node, indent: String = "") -> void:
+		if node == null:
+			return
+		print(indent + node.name + " (" + str(node) + ")")
+		if node.has_method("get_children"):
+			for child in node.get_children():
+				print_node_hierarchy(child, indent + "    ")
+
 	# Log messages related to this asset
 	func log_debug(msg: String):
 		meta.log_debug(self.fileID, msg)
@@ -5642,7 +5650,6 @@ class UnidotMeshRenderer:
 
 	func create_godot_node_orig(state: RefCounted, new_parent: Node3D, component_name: String) -> Node:
 		var new_node: MeshInstance3D = MeshInstance3D.new()
-		new_node.name = component_name
 		state.add_child(new_node, new_parent, self)
 		assign_object_meta(new_node)
 		if meta.get_database().enable_unidot_keys:
@@ -5658,14 +5665,6 @@ class UnidotMeshRenderer:
 		var mf: RefCounted = gameObject.get_meshFilter()
 		if mf != null:
 			state.add_fileID(new_node, mf)
-
-		# TODO: do we need to continue to do this if we're properly setting the materials on the meshes?
-		# does Unity even support material overrides? were we just fixing it here rather than on the mesh?
-#		var idx: int = 0
-#		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
-#		for m in keys.get("m_Materials", []):
-#			new_node.set_surface_override_material(mat_slots[idx] if idx < len(mat_slots) else idx, meta.get_godot_resource(m))
-#			idx += 1
 
 		return new_node
 
