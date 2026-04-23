@@ -5,3 +5,4 @@ static_cache.*res
 static_storage.*res
 
 .idea/
+*.uid
