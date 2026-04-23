@@ -389,7 +389,8 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	# Rework the node hierarchy before saving
 	# NOTE: this is preference and targetting certain assets, should not be used for gthe general case
-	scene_contents = cleanup_scene_hierarchy(scene_contents)
+#	scene_contents = rework_scene_hierarchy(scene_contents)
+	scene_contents = rework_scene_hierarchy_refactor(scene_contents)
 
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
@@ -397,12 +398,57 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	recursive_print(pkgasset, scene_contents)
 	return packed_scene
 
+func process_lod_groups(scene_contents: Node, ps: RefCounted):
+
+	for lod_group in ps.lod_groups:
+		var prev_distance_m: float = 0.0
+		var prev_fade_m: float = 0.0
+		# Formula: 0.65 / screenRelativeHeight * m_Size = distance_in_meters
+		# For example, 0.65 / 0.8125 * 5 = 4.0
+		# or 0.65 / 0.216 * 1 = 3.0
+		# LODGroup scale factor is confusingly aspect ratio dependent.
+		# We scale by another factor or 2 to account for 16:9 aspect ratio.
+		# It seems to make LOD switches less noticeable.
+		var size_m = lod_group.keys.get("m_Size", 1.0)
+		var animate_crossfade: bool = lod_group.keys.get("m_AnimateCrossFading", 0) == 1
+		for lod in lod_group.keys.get("m_LODs", []):
+			var screen_relative_height: float = lod.get("screenRelativeHeight", 1.0)
+			var distance_m = 2.0 * 0.65 / screen_relative_height * size_m
+			var fade_width: float = lod.get("fadeTransitionWidth", 0.0)
+			if animate_crossfade:
+				fade_width = 0.5 # Hardcode half a meter of fade overlap. No idea...
+			else:
+				fade_width = fade_width * (distance_m - prev_distance_m) # fraction of the length of this LOD.
+			for renderer_ref_dict in lod.get("renderers", []):
+				var renderer_ref: Array
+				if typeof(renderer_ref_dict) == TYPE_DICTIONARY:
+					renderer_ref = renderer_ref_dict["renderer"]
+				var np: NodePath = lod_group.meta.fileid_to_nodepath.get(renderer_ref[1], lod_group.meta.prefab_fileid_to_nodepath.get(renderer_ref[1], NodePath()))
+				if not np.is_empty():
+					var node: Node = scene_contents.get_node(np)
+					var visual_inst: VisualInstance3D = node as VisualInstance3D
+					if node != null and visual_inst == null:
+						visual_inst = node.get_child(0) as VisualInstance3D
+					if visual_inst != null:
+						visual_inst.visibility_range_begin = prev_distance_m
+						visual_inst.visibility_range_begin_margin = prev_fade_m
+						visual_inst.visibility_range_end = distance_m
+						visual_inst.visibility_range_end_margin = fade_width
+						# Dependencies seems buggy, so we use Self and don't set the visibility parent.
+						#visual_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+						# Self is really hard to work with as it has overlap...
+						# So we'll use DISABLED for now... which should act like low-water mark / high-water mark.
+						visual_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+			prev_distance_m = distance_m
+			prev_fade_m = fade_width
+
 func set_owner_recursive(node: Node, new_owner: Node) -> void:
 	for child in node.get_children():
 		child.owner = new_owner
 		set_owner_recursive(child, new_owner)
 
-func cleanup_scene_hierarchy(node: Node3D) -> Node3D:
+# Rework the node before saving
+func rework_scene_hierarchy(node: Node3D) -> Node3D:
 #	print("Processing: ", node.name, " (", node.get_class(), ")")
 #	var root_node: bool = false
 #	if not node.get_parent():
@@ -495,7 +541,7 @@ func cleanup_scene_hierarchy(node: Node3D) -> Node3D:
 					child.name = "%s_old" % child.name
 					mesh.name = parent_name
 
-		cleanup_scene_hierarchy(child)
+		rework_scene_hierarchy(child)
 
 	# deal with root node at the very end
 	if node.get_class() == "Node3D" and not node.get_parent() and node.get_children():
@@ -544,46 +590,6 @@ func cleanup_scene_hierarchy(node: Node3D) -> Node3D:
 
 	return node
 
-func process_lod_groups(scene_contents: Node, ps: RefCounted):
-
-	for lod_group in ps.lod_groups:
-		var prev_distance_m: float = 0.0
-		var prev_fade_m: float = 0.0
-		# Formula: 0.65 / screenRelativeHeight * m_Size = distance_in_meters
-		# For example, 0.65 / 0.8125 * 5 = 4.0
-		# or 0.65 / 0.216 * 1 = 3.0
-		# LODGroup scale factor is confusingly aspect ratio dependent.
-		# We scale by another factor or 2 to account for 16:9 aspect ratio.
-		# It seems to make LOD switches less noticeable.
-		var size_m = lod_group.keys.get("m_Size", 1.0)
-		var animate_crossfade: bool = lod_group.keys.get("m_AnimateCrossFading", 0) == 1
-		for lod in lod_group.keys.get("m_LODs", []):
-			var screen_relative_height: float = lod.get("screenRelativeHeight", 1.0)
-			var distance_m = 2.0 * 0.65 / screen_relative_height * size_m
-			var fade_width: float = lod.get("fadeTransitionWidth", 0.0)
-			if animate_crossfade:
-				fade_width = 0.5 # Hardcode half a meter of fade overlap. No idea...
-			else:
-				fade_width = fade_width * (distance_m - prev_distance_m) # fraction of the length of this LOD.
-			for renderer_ref_dict in lod.get("renderers", []):
-				var renderer_ref: Array
-				if typeof(renderer_ref_dict) == TYPE_DICTIONARY:
-					renderer_ref = renderer_ref_dict["renderer"]
-				var np: NodePath = lod_group.meta.fileid_to_nodepath.get(renderer_ref[1], lod_group.meta.prefab_fileid_to_nodepath.get(renderer_ref[1], NodePath()))
-				if not np.is_empty():
-					var node: Node = scene_contents.get_node(np)
-					var visual_inst: VisualInstance3D = node as VisualInstance3D
-					if node != null and visual_inst == null:
-						visual_inst = node.get_child(0) as VisualInstance3D
-					if visual_inst != null:
-						visual_inst.visibility_range_begin = prev_distance_m
-						visual_inst.visibility_range_begin_margin = prev_fade_m
-						visual_inst.visibility_range_end = distance_m
-						visual_inst.visibility_range_end_margin = fade_width
-						# Dependencies seems buggy, so we use Self and don't set the visibility parent.
-						#visual_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-						# Self is really hard to work with as it has overlap...
-						# So we'll use DISABLED for now... which should act like low-water mark / high-water mark.
-						visual_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
-			prev_distance_m = distance_m
-			prev_fade_m = fade_width
+# Rework the node so it's easier to use out of the box before saving
+func rework_scene_hierarchy_refactor(node: Node3D) -> Node3D:
+	return node
