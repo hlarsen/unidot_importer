@@ -4,8 +4,6 @@
 @tool
 extends RefCounted
 
-var classname_to_utype: Dictionary = invert_hashtable(utype_to_classname)
-
 func to_classname(utype: Variant) -> String:
 	if typeof(utype) == TYPE_NODE_PATH:
 		return str(utype)
@@ -682,3 +680,5 @@ var utype_to_classname = {
 	2083778819: "LocalizationAsset",
 	208985858483: "ScriptedImporter",
 }
+
+var classname_to_utype: Dictionary = invert_hashtable(utype_to_classname)
