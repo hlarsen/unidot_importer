@@ -18,14 +18,20 @@
 # 3. Map those properties to equivalent Godot material fields
 class_name UnidotMaterial extends UnidotObject
 
+func get_godot_extension() -> String:
+	return ".mat.tres"
+
+func get_godot_type() -> String:
+	return "StandardMaterial3D"
+
 func create_godot_resource() -> Resource:  #Material:
 	#log_debug("keys: " + str(keys))
-	var kws: Dictionary = get_keywords()
-	var floatProperties: Dictionary = get_float_properties()
+	var kws: Dictionary = _get_keywords()
+	var floatProperties: Dictionary = _get_float_properties()
 	#log_debug(str(floatProperties))
-	var texProperties: Dictionary = get_tex_properties()
+	var texProperties: Dictionary = _get_tex_properties()
 	#log_debug(str(texProperties))
-	var colorProperties: Dictionary = get_color_properties()
+	var colorProperties: Dictionary = _get_color_properties()
 	#log_debug(str(colorProperties))
 	# depth_draw_mode is apparently wrong, causing issues when typed - will look shortly
 #	var ret: StandardMaterial3D = StandardMaterial3D.new()
@@ -34,7 +40,7 @@ func create_godot_resource() -> Resource:  #Material:
 	# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unidot
 	# But it seems to workaround a problem with some materials for now.
 	ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
-	ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
+	ret.albedo_color = _get_color(colorProperties, "_Color", Color.WHITE)
 	var albedo_textures_to_try: Array[Variant] = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap"]
 	for name in texProperties:
 		if albedo_textures_to_try.has(name):
@@ -54,33 +60,33 @@ func create_godot_resource() -> Resource:  #Material:
 			ret.albedo_texture = meta.get_godot_resource(texref)
 			if ret.albedo_texture != null:
 				log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
-				ret.uv1_scale = get_texture_scale(texProperties, name)
-				ret.uv1_offset = get_texture_offset(texProperties, name)
+				ret.uv1_scale = _get_texture_scale(texProperties, name)
+				ret.uv1_offset = _get_texture_offset(texProperties, name)
 				break
 
 	if ret.albedo_texture == null:
-		ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
-		ret.uv1_offset = get_texture_offset(texProperties, "_MainTex")
+		ret.uv1_scale = _get_texture_scale(texProperties, "_MainTex")
+		ret.uv1_offset = _get_texture_offset(texProperties, "_MainTex")
 
 	# TODO: ORM not yet implemented.
 	if true: # kws.get("_NORMALMAP", false):
-		ret.normal_texture = get_texture(texProperties, "_BumpMap")
-		ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
+		ret.normal_texture = _get_texture(texProperties, "_BumpMap")
+		ret.normal_scale = _get_float(floatProperties, "_BumpScale", 1.0)
 		if ret.normal_texture != null:
 			ret.normal_enabled = true
 	if kws.get("_EMISSION", false):
-		var emis_vec: Plane = get_vector_from_color(colorProperties, "_EmissionColor", Color.BLACK)
+		var emis_vec: Plane = _get_vector_from_color(colorProperties, "_EmissionColor", Color.BLACK)
 		var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
 		ret.emission = Color.BLACK
 		if emis_mag > 0.01:
 			ret.emission_enabled = true
 			ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag).linear_to_srgb()
 			ret.emission_energy = emis_mag
-			ret.emission_texture = get_texture(texProperties, "_EmissionMap")
+			ret.emission_texture = _get_texture(texProperties, "_EmissionMap")
 			if ret.emission_texture != null:
 				ret.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 	if true: # kws.get("_PARALLAXMAP", false):
-		ret.heightmap_texture = get_texture(texProperties, "_ParallaxMap")
+		ret.heightmap_texture = _get_texture(texProperties, "_ParallaxMap")
 		if ret.heightmap_texture != null:
 			ret.heightmap_enabled = true
 			# Godot generated standard shader code looks something like this:
@@ -92,28 +98,28 @@ func create_godot_resource() -> Resource:  #Material:
 			# Therefore, it is not possible to represent a heightmap completely accurately
 			# And we must pick a direction: positive or negative. In this case I choose negative.
 			# Which causes the heightmap to "pop out" of the surface.
-			ret.heightmap_scale = -100.0 * get_float(floatProperties, "_Parallax", 1.0)
+			ret.heightmap_scale = -100.0 * _get_float(floatProperties, "_Parallax", 1.0)
 	if kws.get("_SPECULARHIGHLIGHTS_OFF", false):
 		ret.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	if kws.get("_GLOSSYREFLECTIONS_OFF", false):
 		pass
 	if kws.get("_DOUBLESIDED_ON", false): # HDRP-compatible materials should set this.
 		ret.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var occlusion: Texture = get_texture(texProperties, "_OcclusionMap")
+	var occlusion: Texture = _get_texture(texProperties, "_OcclusionMap")
 	if occlusion != null:
 		ret.ao_enabled = true
 		ret.ao_texture = occlusion
-		ret.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0)  # why godot defaults to 0???
+		ret.ao_light_affect = _get_float(floatProperties, "_OcclusionStrength", 1.0)  # why godot defaults to 0???
 		ret.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
 	var metallic_texture: Texture = null
 	var use_glossmap := false
 	if true: # kws.get("_METALLICGLOSSMAP"):
-		var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
+		var metallic_gloss_texture_ref: Array = _get_texture_ref(texProperties, "_MetallicGlossMap")
 		if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
-			metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
+			metallic_gloss_texture_ref = _get_texture_ref(texProperties, "_MetallicSmoothness")
 		if not metallic_gloss_texture_ref.is_empty() and metallic_gloss_texture_ref[1] != 0:
 			metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
-			if not is_equal_approx(get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
+			if not is_equal_approx(_get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
 				metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref, false)
 				log_debug("Found metallic roughness texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
 				use_glossmap = true
@@ -126,7 +132,7 @@ func create_godot_resource() -> Resource:  #Material:
 				log_debug("Found metallic gloss texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
 				use_glossmap = false
 		ret.metallic_texture = metallic_texture
-		ret.metallic = get_float(floatProperties, "_Metallic", 0.0)
+		ret.metallic = _get_float(floatProperties, "_Metallic", 0.0)
 		ret.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 		if use_glossmap:
 			ret.roughness_texture = metallic_texture
@@ -135,10 +141,10 @@ func create_godot_resource() -> Resource:  #Material:
 	# TODO: Glossiness: invert color channels??
 	if metallic_texture == null:
 		# UnidotStandardInput.cginc ignores _Glossiness if _METALLICGLOSSMAP.
-		ret.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
+		ret.roughness = 1.0 - _get_float(floatProperties, "_Glossiness", 0.0)
 	if kws.get("_ALPHATEST_ON"):
 		ret.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		var cutoff: float = get_float(floatProperties, "_Cutoff", 0.0)
+		var cutoff: float = _get_float(floatProperties, "_Cutoff", 0.0)
 		if cutoff > 0.0:
 			ret.alpha_scissor_threshold = cutoff
 	elif kws.get("_ALPHABLEND_ON") or kws.get("_ALPHAPREMULTIPLY_ON"):
@@ -152,18 +158,18 @@ func create_godot_resource() -> Resource:  #Material:
 	return ret
 
 func bake_roughness_texture_if_needed(tmp_path: String, guid_to_pkgasset: Dictionary, stage2_dict_lock: Mutex, stage2_extra_asset_dict: Dictionary) -> String:
-	var kws: Dictionary = get_keywords()
-	var floatProperties: Dictionary = get_float_properties()
-	var texProperties: Dictionary = get_tex_properties()
+	var kws: Dictionary = _get_keywords()
+	var floatProperties: Dictionary = _get_float_properties()
+	var texProperties: Dictionary = _get_tex_properties()
 	# Note that this must be pre-baked into the texture to bring it towards 1.
 	# _GlossMapScale ????
-	var glossiness_value: float = get_float(floatProperties, "_GlossMapScale", 1.0)
+	var glossiness_value: float = _get_float(floatProperties, "_GlossMapScale", 1.0)
 	if is_equal_approx(glossiness_value, 0.0):
 		log_debug("Material has 0 _GlossMapScale")
 		return "" # We can ignore the texture
-	var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
+	var metallic_gloss_texture_ref: Array = _get_texture_ref(texProperties, "_MetallicGlossMap")
 	if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
-		metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
+		metallic_gloss_texture_ref = _get_texture_ref(texProperties, "_MetallicSmoothness")
 	# Not any more: Material has _METALLICGLOSSMAP enabled.
 	if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
 		log_debug("Material has null _MetallicGlossMap")
@@ -248,13 +254,7 @@ func _bake_roughness_texture_locked(tmp_path: String, target_meta: Object, rough
 	log_warn("Failed to generate roughness texture at " + str(pathname) + " from " + str(target_meta.guid), "_MetallicGlossMap", [null, target_meta.main_object_id, target_meta.guid, 0])
 	return ""
 
-func get_godot_extension() -> String:
-	return ".mat.tres"
-
-func get_godot_type() -> String:
-	return "StandardMaterial3D"
-
-func get_float_properties() -> Dictionary:
+func _get_float_properties() -> Dictionary:
 	var flts = keys.get("m_SavedProperties", {}).get("m_Floats", [])
 	var ret: Dictionary = {}.duplicate()
 	# log_debug("material floats: " + str(flts))
@@ -266,7 +266,7 @@ func get_float_properties() -> Dictionary:
 				ret[key] = dic.get(key)
 	return ret
 
-func get_color_properties() -> Dictionary:
+func _get_color_properties() -> Dictionary:
 	var cols = keys.get("m_SavedProperties", {}).get("m_Colors", [])
 	var ret: Dictionary = {}.duplicate()
 	for dic in cols:
@@ -277,7 +277,7 @@ func get_color_properties() -> Dictionary:
 				ret[key] = dic.get(key)
 	return ret
 
-func get_tex_properties() -> Dictionary:
+func _get_tex_properties() -> Dictionary:
 	var texs = keys.get("m_SavedProperties", {}).get("m_TexEnvs", [])
 	var ret: Dictionary = {}.duplicate()
 	for dic in texs:
@@ -288,39 +288,39 @@ func get_tex_properties() -> Dictionary:
 				ret[key] = dic.get(key)
 	return ret
 
-func get_texture_ref(texProperties: Dictionary, name: String) -> Array:
+func _get_texture_ref(texProperties: Dictionary, name: String) -> Array:
 	var env = texProperties.get(name, {})
 	return env.get("m_Texture", [null, 0, "", 0])
 
-func get_texture(texProperties: Dictionary, name: String) -> Texture:
-	var texref: Array = get_texture_ref(texProperties, name)
+func _get_texture(texProperties: Dictionary, name: String) -> Texture:
+	var texref: Array = _get_texture_ref(texProperties, name)
 	if not texref.is_empty():
 		return meta.get_godot_resource(texref)
 	return null
 
-func get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
+func _get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
 	var env = texProperties.get(name, {})
 	var scale: Vector2 = env.get("m_Scale", Vector2(1, 1))
 	return Vector3(scale.x, scale.y, 0.0)
 
-func get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
+func _get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
 	var env = texProperties.get(name, {})
 	var offset: Vector2 = env.get("m_Offset", Vector2(0, 0))
 	return Vector3(offset.x, offset.y, 0.0)
 
-func get_color(colorProperties: Dictionary, name: String, dfl: Color) -> Color:
+func _get_color(colorProperties: Dictionary, name: String, dfl: Color) -> Color:
 	var col: Color = colorProperties.get(name, dfl)
 	return col
 
-func get_float(floatProperties: Dictionary, name: String, dfl: float) -> float:
+func _get_float(floatProperties: Dictionary, name: String, dfl: float) -> float:
 	var ret: float = floatProperties.get(name, dfl)
 	return ret
 
-func get_vector_from_color(colorProperties: Dictionary, name: String, dfl: Color) -> Plane:
+func _get_vector_from_color(colorProperties: Dictionary, name: String, dfl: Color) -> Plane:
 	var col: Color = colorProperties.get(name, dfl)
 	return Plane(Vector3(col.r, col.g, col.b), col.a)
 
-func get_keywords() -> Dictionary:
+func _get_keywords() -> Dictionary:
 	var ret: Dictionary = {}.duplicate()
 	var kwd = keys.get("m_ShaderKeywords", "")
 	if typeof(kwd) == TYPE_STRING:
