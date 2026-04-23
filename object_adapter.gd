@@ -4,21 +4,7 @@
 @tool
 extends RefCounted
 
-const STRING_KEYS: Dictionary = {
-	"value": 1,
-	"m_Name": 1,
-	"m_TagString": 1,
-	"name": 1,
-	"first": 1,
-	"propertyPath": 1,
-	"path": 1,
-	"attribute": 1,
-	"m_ShaderKeywords": 1,
-	"typelessdata": 1,  # Mesh m_VertexData; Texture image data
-	"m_IndexBuffer": 1,
-	"Hash": 1,
-}
-
+var classname_to_utype: Dictionary = invert_hashtable(utype_to_classname)
 
 func to_classname(utype: Variant) -> String:
 	if typeof(utype) == TYPE_NODE_PATH:
@@ -28,14 +14,12 @@ func to_classname(utype: Variant) -> String:
 		return "[UnknownType:" + str(utype) + "]"
 	return ret
 
-
 func to_utype(classname: String) -> int:
 	return classname_to_utype.get(classname, 0)
 
-
 func instantiate_unidot_object(meta: Object, fileID: int, utype: int, type: String) -> UnidotObject:
 	var ret: UnidotObject = null
-	var actual_type = type
+	var actual_type: String = type
 	if utype != 0 and utype_to_classname.has(utype):
 		actual_type = utype_to_classname[utype]
 		if actual_type != type and (type != "Behaviour" or actual_type != "FlareLayer") and (type != "Prefab" or actual_type != "PrefabInstance"):
@@ -76,6 +60,12 @@ func instantiate_unidot_object_from_utype(meta: Object, fileID: int, utype: int)
 	ret.utype = classname_to_utype.get(actual_type, utype)
 	ret.type = actual_type
 	return ret
+
+func invert_hashtable(ht: Dictionary) -> Dictionary:
+	var outd: Dictionary = Dictionary()
+	for key in ht:
+		outd[ht[key]] = key
+	return outd
 
 var _type_dictionary: Dictionary = {
 	# "AimConstraint": UnidotAimConstraint,
@@ -692,13 +682,3 @@ var utype_to_classname = {
 	2083778819: "LocalizationAsset",
 	208985858483: "ScriptedImporter",
 }
-
-
-func invert_hashtable(ht: Dictionary) -> Dictionary:
-	var outd: Dictionary = Dictionary()
-	for key in ht:
-		outd[ht[key]] = key
-	return outd
-
-
-var classname_to_utype: Dictionary = invert_hashtable(utype_to_classname)
