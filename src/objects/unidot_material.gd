@@ -1,125 +1,41 @@
+# Creates Godot materials from Unity materials.
+#
+# In Godot, materials and shaders are decoupled:
+# - StandardMaterial3D (built-in shading model)
+# - ShaderMaterial (custom shader-driven)
+#
+# In Unity, materials and shaders are tightly coupled:
+# shaders define the available properties, and materials store values for them.
+#
+# Unity has multiple render pipelines (Built-in, URP, HDRP), but we do not need to explicitly handle
+# pipeline selection here because the exported material already contains resolved shader + property data.
+# The .mat file serializes the shader reference (by GUID) and resolved property values directly.
+# Texture references are stored as GUIDs and must be resolved separately via the asset database.
+#
+# The conversion process is:
+# 1. Detect the Unity shader used by the material
+# 2. Interpret its property schema (and keywords)
+# 3. Map those properties to equivalent Godot material fields
 class_name UnidotMaterial extends UnidotObject
-
-# Old:
-#    m_Colors:
-#    - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
-#    - _Color: {r: 1, g: 1, b: 1, a: 1}
-# [{_EmissionColor:Color.TRANSPARENT,_Color:Color.WHITE}]
-
-# New:
-#    m_Colors:
-#      data:
-#        first:
-#          name: _EmissionColor
-#        second: {r: 0, g: 0, b: 0, a: 0}
-#      data:
-#        first:
-#          name: _Color
-#        second: {r: 1, g: 1, b: 1, a: 1}
-# ...
-# [{first:{name:_EmissionColor},second:Color.TRANSPARENT},{first:{name:_Color},second:Color.WHITE}]
-
-func get_float_properties() -> Dictionary:
-	var flts = keys.get("m_SavedProperties", {}).get("m_Floats", [])
-	var ret = {}.duplicate()
-	# log_debug("material floats: " + str(flts))
-	for dic in flts:
-		if len(dic) == 2 and dic.has("first") and dic.has("second"):
-			ret[dic["first"]["name"]] = dic["second"]
-		else:
-			for key in dic:
-				ret[key] = dic.get(key)
-	return ret
-
-func get_color_properties() -> Dictionary:
-	var cols = keys.get("m_SavedProperties", {}).get("m_Colors", [])
-	var ret = {}.duplicate()
-	for dic in cols:
-		if len(dic) == 2 and dic.has("first") and dic.has("second"):
-			ret[dic["first"]["name"]] = dic["second"]
-		else:
-			for key in dic:
-				ret[key] = dic.get(key)
-	return ret
-
-func get_tex_properties() -> Dictionary:
-	var texs = keys.get("m_SavedProperties", {}).get("m_TexEnvs", [])
-	var ret = {}.duplicate()
-	for dic in texs:
-		if len(dic) == 2 and dic.has("first") and dic.has("second"):
-			ret[dic["first"]["name"]] = dic["second"]
-		else:
-			for key in dic:
-				ret[key] = dic.get(key)
-	return ret
-
-func get_texture_ref(texProperties: Dictionary, name: String) -> Array:
-	var env = texProperties.get(name, {})
-	return env.get("m_Texture", [null, 0, "", 0])
-
-func get_texture(texProperties: Dictionary, name: String) -> Texture:
-	var texref: Array = get_texture_ref(texProperties, name)
-	if not texref.is_empty():
-		return meta.get_godot_resource(texref)
-	return null
-
-func get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
-	var env = texProperties.get(name, {})
-	var scale: Vector2 = env.get("m_Scale", Vector2(1, 1))
-	return Vector3(scale.x, scale.y, 0.0)
-
-func get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
-	var env = texProperties.get(name, {})
-	var offset: Vector2 = env.get("m_Offset", Vector2(0, 0))
-	return Vector3(offset.x, offset.y, 0.0)
-
-func get_color(colorProperties: Dictionary, name: String, dfl: Color) -> Color:
-	var col: Color = colorProperties.get(name, dfl)
-	return col
-
-func get_float(floatProperties: Dictionary, name: String, dfl: float) -> float:
-	var ret: float = floatProperties.get(name, dfl)
-	return ret
-
-func get_vector_from_color(colorProperties: Dictionary, name: String, dfl: Color) -> Plane:
-	var col: Color = colorProperties.get(name, dfl)
-	return Plane(Vector3(col.r, col.g, col.b), col.a)
-
-func get_keywords() -> Dictionary:
-	var ret: Dictionary = {}.duplicate()
-	var kwd = keys.get("m_ShaderKeywords", "")
-	if typeof(kwd) == TYPE_STRING:
-		for x in kwd.split(" "):
-			ret[x] = true
-	var validkws: Array = keys.get("m_ValidKeywords", [])
-	for x in validkws:
-		ret[str(x)] = true
-	var invalidkws: Array = keys.get("m_InvalidKeywords", [])
-	for x in invalidkws:
-		# Keywords from before the material was switched to another shader.
-		# Since we don't parse shaders, this will sometimes give the equivalent Standard shader keywords.
-		ret[str(x)] = true
-	return ret
-
-func get_godot_type() -> String:
-	return "StandardMaterial3D"
 
 func create_godot_resource() -> Resource:  #Material:
 	#log_debug("keys: " + str(keys))
-	var kws = get_keywords()
-	var floatProperties = get_float_properties()
+	var kws: Dictionary = get_keywords()
+	var floatProperties: Dictionary = get_float_properties()
 	#log_debug(str(floatProperties))
-	var texProperties = get_tex_properties()
+	var texProperties: Dictionary = get_tex_properties()
 	#log_debug(str(texProperties))
-	var colorProperties = get_color_properties()
+	var colorProperties: Dictionary = get_color_properties()
 	#log_debug(str(colorProperties))
+	# depth_draw_mode is apparently wrong, causing issues when typed - will look shortly
+#	var ret: StandardMaterial3D = StandardMaterial3D.new()
 	var ret = StandardMaterial3D.new()
 	ret.resource_name = self.name
 	# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unidot
 	# But it seems to workaround a problem with some materials for now.
 	ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
-	var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap"]
+	var albedo_textures_to_try: Array[Variant] = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap"]
 	for name in texProperties:
 		if albedo_textures_to_try.has(name):
 			continue
@@ -183,7 +99,7 @@ func create_godot_resource() -> Resource:  #Material:
 		pass
 	if kws.get("_DOUBLESIDED_ON", false): # HDRP-compatible materials should set this.
 		ret.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var occlusion = get_texture(texProperties, "_OcclusionMap")
+	var occlusion: Texture = get_texture(texProperties, "_OcclusionMap")
 	if occlusion != null:
 		ret.ao_enabled = true
 		ret.ao_texture = occlusion
@@ -236,9 +152,9 @@ func create_godot_resource() -> Resource:  #Material:
 	return ret
 
 func bake_roughness_texture_if_needed(tmp_path: String, guid_to_pkgasset: Dictionary, stage2_dict_lock: Mutex, stage2_extra_asset_dict: Dictionary) -> String:
-	var kws = get_keywords()
-	var floatProperties = get_float_properties()
-	var texProperties = get_tex_properties()
+	var kws: Dictionary = get_keywords()
+	var floatProperties: Dictionary = get_float_properties()
+	var texProperties: Dictionary = get_tex_properties()
 	# Note that this must be pre-baked into the texture to bring it towards 1.
 	# _GlossMapScale ????
 	var glossiness_value: float = get_float(floatProperties, "_GlossMapScale", 1.0)
@@ -265,7 +181,7 @@ func bake_roughness_texture_if_needed(tmp_path: String, guid_to_pkgasset: Dictio
 		return ""
 	target_meta.mutex.lock()
 	var pathname: String = target_meta.path
-	var roughness_filename = pathname.get_basename() + ".roughness.png"
+	var roughness_filename: String = pathname.get_basename() + ".roughness.png"
 	# Sometimes multiple materials reference the same roughness texture. We to avoid generating the same texture multiple times.
 	stage2_dict_lock.lock()
 	if stage2_extra_asset_dict.has(roughness_filename):
@@ -304,7 +220,7 @@ func _bake_roughness_texture_locked(tmp_path: String, target_meta: Object, rough
 				"roughness/mode": 5,
 			}
 			if not FileAccess.file_exists(roughness_filename + ".import"):
-				var cfile = ConfigFile.new()
+				var cfile: ConfigFile = ConfigFile.new()
 				cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
 				# Make an empty "keep" importer file so it will not be imported.
 				cfile.set_value("remap", "importer", "keep")
@@ -334,3 +250,88 @@ func _bake_roughness_texture_locked(tmp_path: String, target_meta: Object, rough
 
 func get_godot_extension() -> String:
 	return ".mat.tres"
+
+func get_godot_type() -> String:
+	return "StandardMaterial3D"
+
+func get_float_properties() -> Dictionary:
+	var flts = keys.get("m_SavedProperties", {}).get("m_Floats", [])
+	var ret: Dictionary = {}.duplicate()
+	# log_debug("material floats: " + str(flts))
+	for dic in flts:
+		if len(dic) == 2 and dic.has("first") and dic.has("second"):
+			ret[dic["first"]["name"]] = dic["second"]
+		else:
+			for key in dic:
+				ret[key] = dic.get(key)
+	return ret
+
+func get_color_properties() -> Dictionary:
+	var cols = keys.get("m_SavedProperties", {}).get("m_Colors", [])
+	var ret: Dictionary = {}.duplicate()
+	for dic in cols:
+		if len(dic) == 2 and dic.has("first") and dic.has("second"):
+			ret[dic["first"]["name"]] = dic["second"]
+		else:
+			for key in dic:
+				ret[key] = dic.get(key)
+	return ret
+
+func get_tex_properties() -> Dictionary:
+	var texs = keys.get("m_SavedProperties", {}).get("m_TexEnvs", [])
+	var ret: Dictionary = {}.duplicate()
+	for dic in texs:
+		if len(dic) == 2 and dic.has("first") and dic.has("second"):
+			ret[dic["first"]["name"]] = dic["second"]
+		else:
+			for key in dic:
+				ret[key] = dic.get(key)
+	return ret
+
+func get_texture_ref(texProperties: Dictionary, name: String) -> Array:
+	var env = texProperties.get(name, {})
+	return env.get("m_Texture", [null, 0, "", 0])
+
+func get_texture(texProperties: Dictionary, name: String) -> Texture:
+	var texref: Array = get_texture_ref(texProperties, name)
+	if not texref.is_empty():
+		return meta.get_godot_resource(texref)
+	return null
+
+func get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
+	var env = texProperties.get(name, {})
+	var scale: Vector2 = env.get("m_Scale", Vector2(1, 1))
+	return Vector3(scale.x, scale.y, 0.0)
+
+func get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
+	var env = texProperties.get(name, {})
+	var offset: Vector2 = env.get("m_Offset", Vector2(0, 0))
+	return Vector3(offset.x, offset.y, 0.0)
+
+func get_color(colorProperties: Dictionary, name: String, dfl: Color) -> Color:
+	var col: Color = colorProperties.get(name, dfl)
+	return col
+
+func get_float(floatProperties: Dictionary, name: String, dfl: float) -> float:
+	var ret: float = floatProperties.get(name, dfl)
+	return ret
+
+func get_vector_from_color(colorProperties: Dictionary, name: String, dfl: Color) -> Plane:
+	var col: Color = colorProperties.get(name, dfl)
+	return Plane(Vector3(col.r, col.g, col.b), col.a)
+
+func get_keywords() -> Dictionary:
+	var ret: Dictionary = {}.duplicate()
+	var kwd = keys.get("m_ShaderKeywords", "")
+	if typeof(kwd) == TYPE_STRING:
+		for x in kwd.split(" "):
+			ret[x] = true
+	var validkws: Array = keys.get("m_ValidKeywords", [])
+	for x in validkws:
+		ret[str(x)] = true
+	var invalidkws: Array = keys.get("m_InvalidKeywords", [])
+	for x in invalidkws:
+		# Keywords from before the material was switched to another shader.
+		# Since we don't parse shaders, this will sometimes give the equivalent Standard shader keywords.
+		ret[str(x)] = true
+	return ret
