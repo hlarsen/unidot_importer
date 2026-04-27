@@ -229,7 +229,7 @@ func _parse_unity_material_data() -> Dictionary:
 
 	if builtin_shader_name.is_empty() and not shader_path.is_empty():
 		graph = ShaderGraphParser.parse("res://.godot/unidot_temp/" + shader_path)
-		ShaderGraphParser.print_summary(graph)
+#		ShaderGraphParser.print_summary(graph)
 		var internal_path: String = graph.get("path", "")
 		if internal_path.is_empty():
 			shadergraph_name = shader_path

@@ -17,6 +17,7 @@
 # Returns an empty Dictionary if the file cannot be read or parsed.
 class_name ShaderGraphParser
 
+
 const SURFACE_TYPE: Dictionary = {
 	0: "Opaque",
 	1: "Transparent",
@@ -55,13 +56,8 @@ const PIPELINE_TYPES: Dictionary = {
 	"HDRenderPipelineTarget": "HDRP",
 }
 
-const TARGET_FULL_TYPES: Array = [
-	"UnityEditor.Rendering.BuiltIn.ShaderGraph.BuiltInTarget",
-	"UnityEditor.Rendering.Universal.ShaderGraph.UniversalTarget",
-	"UnityEditor.Rendering.HighDefinition.ShaderGraph.HDRenderPipelineTarget",
-]
-
 const GRAPH_DATA_TYPE: String = "UnityEditor.ShaderGraph.GraphData"
+
 
 static func parse(file_path: String) -> Dictionary:
 	var file: FileAccess = FileAccess.open(file_path, FileAccess.READ)
@@ -115,6 +111,9 @@ static func parse(file_path: String) -> Dictionary:
 		"props_by_id": props_by_id,
 	}
 
+
+# ── Object splitting ───────────────────────────────────────────────────────────
+
 static func _split_objects(content: String) -> Array:
 	# .shadergraph files are multiple top-level JSON objects concatenated,
 	# not a JSON array. Walk by brace depth to find each object boundary.
@@ -156,6 +155,9 @@ static func _split_objects(content: String) -> Array:
 
 	return objects
 
+
+# ── Properties ────────────────────────────────────────────────────────────────
+
 static func _parse_properties(graph_obj: Dictionary, by_id: Dictionary) -> Array:
 	var result: Array = []
 
@@ -167,16 +169,12 @@ static func _parse_properties(graph_obj: Dictionary, by_id: Dictionary) -> Array
 
 	return result
 
+
 static func _parse_property(obj: Dictionary) -> Dictionary:
 	var full_type: String = obj.get("m_Type", "")
 	var short: String = full_type.split(".")[-1]
 
-	# Value location varies by property type
-	var default_value = (
-		obj.get("m_Value",
-		obj.get("m_FloatValue",
-		obj.get("m_ColorValue", null)))
-	)
+	var default_value = _parse_property_value(obj, short)
 
 	return {
 		"id": obj.get("m_ObjectId", ""),
@@ -186,6 +184,29 @@ static func _parse_property(obj: Dictionary) -> Dictionary:
 		"default_value": default_value,
 		"exposed": obj.get("m_GeneratePropertyBlock", true),
 	}
+
+
+static func _parse_property_value(obj: Dictionary, short_type: String):
+	match short_type:
+		"Texture2DShaderProperty":
+			# Default texture is stored as a JSON string inside m_SerializedTexture.
+			# Parse it to get the guid, or return null if none set.
+			var serialized: String = obj.get("m_Value", {}).get("m_SerializedTexture", "")
+			if serialized.is_empty():
+				return null
+			var inner = JSON.parse_string(serialized)
+			if inner == null:
+				return null
+			# inner looks like: {"texture":{"fileID":...,"guid":"...","type":3}}
+			return inner.get("texture", {}).get("guid", null)
+		"BooleanShaderProperty":
+			return obj.get("m_Value", false)
+		_:
+			# Vector1, Color, etc.
+			return obj.get("m_Value", obj.get("m_FloatValue", obj.get("m_ColorValue", null)))
+
+
+# ── Nodes ─────────────────────────────────────────────────────────────────────
 
 static func _parse_nodes(graph_obj: Dictionary, by_id: Dictionary, props_by_id: Dictionary) -> Array:
 	var result: Array = []
@@ -198,6 +219,7 @@ static func _parse_nodes(graph_obj: Dictionary, by_id: Dictionary, props_by_id: 
 
 	return result
 
+
 static func _parse_node(obj: Dictionary, by_id: Dictionary, props_by_id: Dictionary) -> Dictionary:
 	var full_type: String = obj.get("m_Type", "")
 	var short: String = full_type.split(".")[-1]
@@ -207,7 +229,6 @@ static func _parse_node(obj: Dictionary, by_id: Dictionary, props_by_id: Diction
 		"id": oid,
 		"type": short,
 		"name": obj.get("m_Name", short),
-		# Extra fields populated below based on type
 		"property_id": "",
 		"property_name": "",
 		"space": "",
@@ -215,21 +236,35 @@ static func _parse_node(obj: Dictionary, by_id: Dictionary, props_by_id: Diction
 		"is_output": short == "BlockNode",
 	}
 
-	if short == "PropertyNode":
-		var prop_id: String = obj.get("m_Property", {}).get("m_Id", "")
-		node["property_id"] = prop_id
-		node["property_name"] = props_by_id.get(prop_id, {}).get("name", "")
+	match short:
+		"PropertyNode":
+			var prop_id: String = obj.get("m_Property", {}).get("m_Id", "")
+			node["property_id"] = prop_id
+			node["property_name"] = props_by_id.get(prop_id, {}).get("name", "")
 
-	elif short == "PositionNode":
-		node["space"] = POSITION_SPACE.get(obj.get("m_Space", 0), "Object")
+		"PositionNode", "ViewDirectionNode":
+			node["space"] = POSITION_SPACE.get(obj.get("m_Space", 0), "Object")
 
-	elif short == "Vector3Node":
-		node["constant"] = obj.get("m_Value", null)
+		"Vector1Node", "Vector2Node", "Vector3Node":
+			node["constant"] = obj.get("m_Value", null)
 
-	elif short == "Vector1Node":
-		node["constant"] = obj.get("m_Value", null)
+		"SampleTexture2DNode":
+			# texture_type: 0=Default (color), 1=Normal
+			node["texture_type"] = obj.get("m_TextureType", 0)
+
+		"UVNode":
+			# uv_channel: 0=UV0, 1=UV1
+			node["uv_channel"] = obj.get("m_OutputChannel", 0)
+
+		"SceneDepthNode", "CameraNode", "FogNode":
+			# These read scene/view data - flag so conversion knows
+			# this shader needs special handling in Godot
+			node["reads_scene_data"] = true
 
 	return node
+
+
+# ── Edges ─────────────────────────────────────────────────────────────────────
 
 static func _parse_edges(graph_obj: Dictionary) -> Array:
 	var result: Array = []
@@ -246,6 +281,15 @@ static func _parse_edges(graph_obj: Dictionary) -> Array:
 
 	return result
 
+
+# ── Targets ───────────────────────────────────────────────────────────────────
+
+const TARGET_FULL_TYPES: Array = [
+	"UnityEditor.Rendering.BuiltIn.ShaderGraph.BuiltInTarget",
+	"UnityEditor.Rendering.Universal.ShaderGraph.UniversalTarget",
+	"UnityEditor.Rendering.HighDefinition.ShaderGraph.HDRenderPipelineTarget",
+]
+
 static func _parse_targets(objects: Array) -> Array:
 	var target_types: Array = TARGET_FULL_TYPES
 
@@ -255,6 +299,7 @@ static func _parse_targets(objects: Array) -> Array:
 			result.append(_parse_target(obj))
 
 	return result
+
 
 static func _parse_target(obj: Dictionary) -> Dictionary:
 	var full_type: String = obj.get("m_Type", "")
@@ -269,6 +314,9 @@ static func _parse_target(obj: Dictionary) -> Dictionary:
 		"cast_shadows": obj.get("m_CastShadows", null),
 		"receive_shadows": obj.get("m_ReceiveShadows", null),
 	}
+
+
+# ── Debug print ───────────────────────────────────────────────────────────────
 
 static func print_summary(graph: Dictionary) -> void:
 	if graph.is_empty():
@@ -296,10 +344,17 @@ static func print_summary(graph: Dictionary) -> void:
 		var label: String = n["type"]
 		if n["type"] == "PropertyNode":
 			label = "PropertyNode -> '%s'" % n["property_name"]
-		elif n["type"] == "PositionNode":
-			label = "PositionNode (%s)" % n["space"]
 		elif n["type"] == "BlockNode":
 			label = "OUTPUT: %s" % n["name"]
+		elif n["type"] in ["PositionNode", "ViewDirectionNode"]:
+			label = "%s (%s)" % [n["type"], n["space"]]
+		elif n["type"] == "SampleTexture2DNode":
+			var tex_label: String = "Normal" if n.get("texture_type", 0) == 1 else "Color"
+			label = "SampleTexture2D (%s)" % tex_label
+		elif n["type"] == "UVNode":
+			label = "UV%d" % n.get("uv_channel", 0)
+		elif n.get("reads_scene_data", false):
+			label = "%s [scene data]" % n["type"]
 		elif n["constant"] != null:
 			label = "%s = %s" % [n["type"], str(n["constant"])]
 		print("  [%s] %s" % [n["id"].left(8), label])
@@ -322,6 +377,7 @@ static func print_summary(graph: Dictionary) -> void:
 			print("  %s <- (default)" % n["name"])
 		else:
 			print("  %s <- %s" % [n["name"], ", ".join(sources)])
+
 
 static func _node_label(node_id: String, graph: Dictionary) -> String:
 	var node: Dictionary = graph["nodes_by_id"].get(node_id, {})
