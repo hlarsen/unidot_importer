@@ -279,6 +279,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				skel.owner = scene_contents
 			asset.create_skeleton_bone(node_state, skel)
 		else:
+			# NOTE: around here is where i believe we see issues with prefab variants start
 			# asset.log_debug(str(asset) + " position " + str(asset.transform.godot_transform))
 			var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
 			if scene_contents == null:

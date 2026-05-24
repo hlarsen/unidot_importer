@@ -233,6 +233,44 @@ func instantiate_prefab_node(xstate: RefCounted, new_parent: Node3D) -> Array:  
 		if uprops.has("m_Name"):
 			var m_Name: String = uprops["m_Name"]
 			state.add_prefab_rename(fileID, m_Name)
+
+		# NOTE: this is a dumb workaround for making sure surface material overrides are properly set on Prefab Variants
+		# probably a more proper way to handle processing Prefab Variants (see note at convert_scene:282ish)
+		if target_nodepath.is_empty():
+			var has_material_override: bool = false
+			for k in uprops.keys():
+				if k.begins_with("m_Materials"):
+					has_material_override = true
+					break
+
+			if has_material_override:
+				var mesh_renderer_paths: Array = []
+				for k in target_prefab_meta.fileid_to_utype:
+					if target_prefab_meta.fileid_to_utype[k] == 23:
+						var np: NodePath = target_prefab_meta.fileid_to_nodepath.get(k, NodePath())
+						if not np.is_empty() and not mesh_renderer_paths.has(np):
+							mesh_renderer_paths.append(np)
+
+				if mesh_renderer_paths.size() == 1:
+					var existing_node: Node = instanced_scene.get_node(mesh_renderer_paths[0])
+					if existing_node != null:
+						log_debug("Applying material override to MeshRenderer at " + str(mesh_renderer_paths[0]))
+						var mat_override_obj: UnidotObject = adapter.instantiate_unidot_object_from_utype(meta, fileID, 23)
+						var converted: Dictionary = mat_override_obj.convert_properties(existing_node, uprops)
+						mat_override_obj.apply_component_props(existing_node, converted)
+						for key in converted:
+							if key.begins_with("_materials/"):
+								var idx: int = key.split("/")[1].to_int()
+								var mat: Material = converted[key]
+								print("* setting surface_material_override/", idx, " = ", mat)
+								existing_node.set("surface_material_override/" + str(idx), mat)
+				else:
+					log_warn("Cannot apply material override: found " + str(mesh_renderer_paths.size()) + " MeshRenderers, expected 1", "m_Materials", null)
+			else:
+				log_debug("Skipping mod for fileID " + str(fileID) + " - not found in base prefab nodepath map")
+
+			continue
+
 		var existing_node = instanced_scene.get_node(target_nodepath)
 		if uprops.get("m_Controller", [null, 0])[1] != 0:
 			var animtree: AnimationTree = null
