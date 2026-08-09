@@ -600,7 +600,7 @@ var rootOrder: int:
 	get:
 		return 0  # no idea..
 
-func get_gameObject() -> UnidotGameObject:
+func get_gameObject():# -> UnidotGameObject:
 	return self
 
 var parent_ref: Array:  # UnidotRef
